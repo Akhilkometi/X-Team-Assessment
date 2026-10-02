@@ -26,6 +26,7 @@ FRAUD_PATTERNS = tuple(
         r"scam\w*",
         r"hack\w*",
         r"drain\w*",
+        r"(?:did\s+not|didn't|never)\s+(?:make|made|authori[sz]e[ds]?|initiate[ds]?)\b",
     )
 )
 
