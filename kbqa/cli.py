@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 
 from kbqa.answer import KBAnswerer
 from kbqa.loader import load_documents
+from kbqa.resolve import status_inconsistencies
 
 
 def main() -> None:
@@ -22,7 +24,14 @@ def main() -> None:
         if not required.issubset(reader.fieldnames or []):
             parser.error("Input CSV must contain qid, question, and as_of columns")
         rows = list(reader)
-    answerer = KBAnswerer(load_documents(), min_score=args.min_score, min_margin=args.min_margin)
+    documents = load_documents()
+    for finding in status_inconsistencies(documents):
+        print(
+            f"warning: {finding.doc_id} has status={finding.status!r} but dates say "
+            f"valid_today={finding.is_valid_as_of_today} — metadata may be stale",
+            file=sys.stderr,
+        )
+    answerer = KBAnswerer(documents, min_score=args.min_score, min_margin=args.min_margin)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as target:

@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from kbqa.answer import KBAnswerer
-from kbqa.loader import load_documents
-from kbqa.resolve import is_valid, resolve_document
+from kbqa.loader import Document, load_documents
+from kbqa.resolve import is_valid, resolve_document, status_inconsistencies
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +37,30 @@ def test_historical_dispute_and_staking_versions(documents):
     assert resolve_document(documents, "kb-031", date(2026, 3, 1)).document.doc_id == "kb-031"
     assert resolve_document(documents, "kb-041", date(2026, 3, 1)).document.doc_id == "kb-041"
     assert resolve_document(documents, "kb-041", date(2026, 7, 28)).document.doc_id == "kb-042"
+
+
+def test_dispute_window_boundary_is_exact(documents):
+    # kb-031 valid_until=2026-06-30, kb-032 effective_date=2026-07-01: no gap, no overlap.
+    assert resolve_document(documents, "kb-031", date(2026, 6, 30)).document.doc_id == "kb-031"
+    assert resolve_document(documents, "kb-031", date(2026, 7, 1)).document.doc_id == "kb-032"
+
+
+def test_staking_rate_boundary_is_exact(documents):
+    # kb-041 valid_until=2026-05-31, kb-042 effective_date=2026-06-01: no gap, no overlap.
+    assert resolve_document(documents, "kb-041", date(2026, 5, 31)).document.doc_id == "kb-041"
+    assert resolve_document(documents, "kb-041", date(2026, 6, 1)).document.doc_id == "kb-042"
+
+
+def test_status_inconsistencies_flags_contradiction_not_present_in_real_kb(documents):
+    # The real KB is internally consistent today; status_inconsistencies should find nothing...
+    assert status_inconsistencies(documents, as_of=date(2026, 10, 2)) == []
+    # ...but a doc claiming status=current while its own dates say otherwise must be caught.
+    stale_doc = next(doc for doc in documents if doc.doc_id == "kb-012")
+    contradicting = Document(**{**stale_doc.__dict__, "status": "current"})
+    findings = status_inconsistencies([contradicting], as_of=date(2026, 10, 2))
+    assert len(findings) == 1
+    assert findings[0].doc_id == "kb-012"
+    assert findings[0].is_valid_as_of_today is False
 
 
 def test_expired_notices_answer_no_active_notice(answerer):

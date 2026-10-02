@@ -22,10 +22,12 @@ def evaluate(input_path: Path, gold_path: Path, answerer: KBAnswerer) -> dict[st
     if set(row["qid"] for row in questions) != set(gold):
         raise ValueError(f"Gold-label coverage mismatch for {input_path.name}")
     correct_documents = 0
+    correct_family = 0
     stale = 0
     same_family_predictions = 0
     correct_abstentions = 0
     predicted_abstentions = 0
+    answerable_total = sum(value != "NONE" for value in gold.values())
     expected_abstentions = sum(value == "NONE" for value in gold.values())
     family_lookup = {doc.doc_id: doc.family_id for doc in answerer.documents}
     for row in questions:
@@ -41,10 +43,14 @@ def evaluate(input_path: Path, gold_path: Path, answerer: KBAnswerer) -> dict[st
             correct_documents += int(not result.abstained and selected_doc == expected)
             if not result.abstained and result.family_id == family_lookup[expected]:
                 same_family_predictions += 1
+                correct_family += 1
                 stale += int(selected_doc != expected)
     total = len(questions)
     return {
         "questions": total,
+        # Of the answerable questions, did we even find the right policy topic? Decomposes
+        # top1_document_accuracy into "wrong topic" vs. "right topic, wrong dated version".
+        "family_accuracy_on_answerable": correct_family / answerable_total if answerable_total else None,
         "top1_document_accuracy": correct_documents / total if total else 0.0,
         "stale_version_rate": stale / same_family_predictions if same_family_predictions else 0.0,
         "stale_version_count": stale,
