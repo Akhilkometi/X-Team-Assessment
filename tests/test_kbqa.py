@@ -124,3 +124,13 @@ def test_support_code_request_retrieves_phishing_policy(answerer):
 def test_invalid_as_of_is_rejected(answerer):
     with pytest.raises(ValueError, match="ISO date"):
         answerer.answer("What fee applies?", "not-a-date")
+
+
+def test_answer_text_distinguishes_historical_from_current_rate(answerer):
+    # Regression guard for the retrieval-vs-extraction gap: picking the right DOCUMENT
+    # isn't the same as extracting the right SENTENCE from it. kb-041 (historical) and
+    # kb-042 (current) quote different ETH rates for the same underlying question.
+    current = answerer.answer("What is the staking reward rate for ETH?", "2026-07-28")
+    historical = answerer.answer("What was the ETH staking rate in March 2026?", "2026-03-01")
+    assert "3.1%" in current.answer and "4.2%" not in current.answer
+    assert "4.2%" in historical.answer and "3.1%" not in historical.answer
