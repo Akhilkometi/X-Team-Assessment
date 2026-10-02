@@ -1,56 +1,44 @@
-# Support Ticket Router, Evaluation Report
+# Support Ticket Router — Evaluation and Sign-off Decision
 
-**Author:** previous engineer on the triage project
-**Status:** handed over, awaiting sign off to ship
+**Decision: do not sign off for production.** The handover's 98.75% random-holdout accuracy is inflated by near-duplicate templates crossing the split. The vectorizer was also fit before splitting. The 80-row holdout and accuracy-only report do not establish reliable fraud performance.
 
-## Approach
+## Current grouped-CV evidence
 
-Support messages arrive in a single queue and get routed by hand to one of four
-teams: `account-access`, `transaction-dispute`, `fraud-report`, `general`. We
-have 400 historical messages labelled with the route they were sent to.
+Run `python -m eval.eval_classifier` from the repository root. It uses a `Pipeline` (so TF-IDF is fit within each fold), template-grouped `StratifiedGroupKFold`, five seeds and nested threshold selection. This repository's normalizer creates 77 groups from the 400 messages.
 
-I vectorised the messages with TF-IDF over unigrams and bigrams and trained a
-logistic regression on top. I held out 20% of the data as a test set to check
-performance.
+Latest run (five repetitions pooled):
 
-Run it with:
+| Candidate | Accuracy | Macro-F1 | Fraud precision | Fraud recall |
+|---|---:|---:|---:|---:|
+| Pipeline, unweighted, argmax | 0.8375 | 0.8150 | 0.7742 | 0.6720 |
+| Pipeline, balanced, argmax | 0.8105 | 0.7924 | 0.5963 | 0.7680 |
+| Balanced, nested threshold, fraud keyword override | 0.8210 | 0.8126 | 0.6072 | 0.9400 |
 
-```bash
-python3 baseline/baseline_classifier.py
-```
+The first model's pooled confusion matrix (true labels as rows; order `account-access`, `transaction-dispute`, `fraud-report`, `general`):
 
-## Result
+| True \\ Predicted | account-access | transaction-dispute | fraud-report | general |
+|---|---:|---:|---:|---:|
+| account-access | 404 | 14 | 27 | 55 |
+| transaction-dispute | 47 | 381 | 10 | 12 |
+| fraud-report | 38 | 3 | 168 | 41 |
+| general | 28 | 38 | 12 | 722 |
 
-```
-loaded 400 rows
-test accuracy: 0.9875
-```
+The recall-oriented candidate's pooled confusion matrix:
 
-**98.75% accuracy on held out data.** Only one message in the test set was
-routed incorrectly.
+| True \\ Predicted | account-access | transaction-dispute | fraud-report | general |
+|---|---:|---:|---:|---:|
+| account-access | 401 | 15 | 32 | 52 |
+| transaction-dispute | 45 | 385 | 19 | 1 |
+| fraud-report | 0 | 1 | 235 | 14 |
+| general | 26 | 52 | 101 | 621 |
 
-## Class distribution
+The candidate improves fraud recall from 0.672 to 0.940, while precision is 0.607. It still misses the proposed ≥0.95 recall target. It is not approved to ship based on this dataset.
 
-For reference, the label counts in the training data are:
+## Proposed acceptance criteria
 
-| route | count |
-|---|---|
-| general | 160 |
-| account-access | 100 |
-| transaction-dispute | 90 |
-| fraud-report | 50 |
+- Primary: fraud-report recall ≥0.95, subject to fraud precision ≥0.60.
+- Secondary: macro-F1, with per-route precision, recall and confusion matrix.
+- Evaluation: grouped CV by normalized template plus a temporally later holdout; select any threshold inside training/development data only.
+- Before launch: validate on human-reviewed, representative traffic; assess calibration and distribution shift; monitor false negatives, escalation volume and rule overrides; provide human review/fallback.
 
-`general` is the most common route and `fraud-report` the least common. The
-model reaches 98.75% accuracy regardless, so the distribution does not appear to
-be causing a problem in practice.
-
-## Conclusion
-
-The model is accurate, it trains in under a second, and it has no runtime
-dependencies beyond scikit-learn. I see no blockers. Recommend we ship this to
-production behind the existing queue and revisit only if accuracy degrades.
-
-Possible follow ups, none of which I consider urgent:
-
-- Try a gradient boosting model to see if it beats 98.75%.
-- Consider an LLM if we ever add more routes.
+Threshold selection currently maximizes grouped inner-OOF fraud recall subject to a 0.60 precision floor. The CLI default threshold is an initial policy value, not a production calibration. The high-recall keyword safety net is explicit and auditable, but requires ongoing review.
