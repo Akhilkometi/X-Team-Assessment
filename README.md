@@ -33,6 +33,12 @@ python -m pytest -q
 
 The classifier CSV contract is `text,prediction`. The answer CSV contract is `qid,answer,doc_ids`; `doc_ids` is semicolon-separated and empty when the system abstains. The default KB directory and training file are resolved relative to the package, not the current directory.
 
+**Optional — Part C (screenshot routing):** needs a system Tesseract install (`brew install tesseract` on macOS, `apt-get install tesseract-ocr` on Linux) plus `pip install -r requirements-mediaqa.txt`. Kept out of the core `requirements.txt` on purpose, same reasoning as the model-comparison and LLM scripts: the required parts shouldn't gain a dependency an optional stretch item needs. `tests/test_mediaqa.py` skips itself cleanly (`pytest.importorskip`) if `pytesseract` isn't installed, so the core test suite is unaffected either way.
+
+```text
+python -m mediaqa.cli --input-dir media/screenshots --output media_predictions.csv
+```
+
 ## Part A — classifier evaluation and decision
 
 ### Why 98.75% is inflated
@@ -132,9 +138,31 @@ Three numbers, not one, because a wrong answer has two different causes and they
 
 BM25, rules and a small synonym list are intentionally transparent, but they can miss new paraphrases and have hand-tuned intent logic. Before launch, add more paraphrased/unsupported/date-shifted evaluation cases, inspect score/margin calibration by topic, review temporal gaps/overlaps, track abstentions and stale-version failures, and involve KB owners in contradictory metadata. A later semantic retriever can be evaluated as a candidate behind the same family-resolution and abstention contracts; it must not bypass temporal validity or provenance.
 
-## Part C — intentionally not implemented
+## Part C — screenshots routed via local OCR
 
-I would not spend this take-home's three-hour budget implementing optional multimodal ingestion. The screenshots and voice notes add little to the core routing/KB value and create additional failure modes, data handling, testing and operational surface. If the product requirement is established, **on-device/local Tesseract OCR for screenshots** is the stronger first experiment: inexpensive, repeatable and keeps synthetic-or-real PII off a hosted vision service. Audio adds ASR cost, accent/noise error, transcription consent/retention questions and little incremental routing signal; defer it until measured customer value justifies that risk. Any future multimodal path should preserve provenance, redact/minimize sensitive content, allow correction, and fall back to human review.
+Picked screenshots over voice notes: audio adds ASR cost, accent/noise error, and transcription consent/retention questions for little incremental routing signal, whereas a screenshot's on-screen text is usually enough on its own. Picked **local Tesseract OCR** over a hosted vision API for the reason the brief itself raises — these assets contain things a customer wouldn't want leaked (an email address, a phone number, a partial wallet address, a withdrawal amount), and OCR text extraction is a commodity operation that doesn't need a model smart enough to also have memorized the image. Sending that to a third-party vision API is unjustified data exposure for a task this mechanical.
+
+**Architecture:** `mediaqa/ocr.py` extracts text locally (`pytesseract` + Tesseract 5.5.2, no network call), then `mediaqa/cli.py` feeds that text straight into the **unmodified Part A pipeline** (`triage.classifier.predict_route`) — same fitted model, same keyword safety net, same fraud-threshold estimation. OCR is the only new component; routing logic isn't duplicated or reimplemented for images.
+
+```
+python -m mediaqa.cli --input-dir media/screenshots --output media_predictions.csv
+```
+
+**Result on the 3 provided screenshots: 3/3 correctly routed.**
+
+| Screenshot | OCR excerpt | Routed to |
+|---|---|---|
+| `login-error.png` | "Verification failed... two-factor authentication code... enrolled device is no longer reachable... replaced my phone last week" | `account-access` |
+| `txn-failed.png` | "$4,500.00... Withdrawal to external wallet... already left my available balance but the transfer has not been broadcast" | `transaction-dispute` |
+| `phishing-sms.png` | "MERIDIAN SECURITY ALERT... Reply with the 6 digit code... move your remaining balance to this holding wallet... My balance is gone now" | `fraud-report` |
+
+The phishing-SMS case is worth calling out specifically: its OCR'd text never contains any of the explicit keyword-safety-net terms (no "stolen," "scam," "unauthorized," "phishing" — a real phishing message doesn't announce itself with the word "phishing"). It's caught purely by the trained model's probability (0.315, above the 0.25 default threshold), which is a genuinely reassuring result — routing doesn't collapse to "keyword list or nothing."
+
+**Cost and latency per ticket** (measured locally, not estimated): OCR itself runs in ~0.2–0.5s per image (inverted grayscale preprocessing measured faster than raw on these dark-mode screenshots — Tesseract's models are trained mostly on dark-text-on-light-background documents). Zero per-request API cost — Tesseract is a local binary, not a metered service. The 1.65s wall-clock for all 3 images end-to-end in the CLI is dominated by re-fitting the TF-IDF+LR model on every invocation (the same cost the text CLI already pays, not an OCR-specific cost); in a real service the model would be fitted once and held in memory, making OCR the only per-request cost.
+
+**What happens when it degrades:** a blurred, rotated, or low-contrast screenshot produces garbled OCR text rather than a clean failure — the classifier would then route on noise, not on an explicit error. Two tests cover the boundaries that *are* handled explicitly: a missing file raises `FileNotFoundError` rather than crashing obscurely, and an image that OCRs to empty text short-circuits to an empty prediction instead of calling the classifier on nothing. What's genuinely not handled: no confidence gate on OCR output itself (unlike Part B's retrieval, which abstains below a score/margin threshold), so a bad scan currently still gets routed somewhere rather than flagged for human review. With more time, the right fix is a minimum-confidence check on Tesseract's own per-word confidence scores (it reports these), abstaining to a human queue below some threshold — the same abstention discipline Part B already has, not yet extended here.
+
+Any future multimodal path should also preserve provenance, allow correction, and keep the same human-review fallback.
 
 ## Scope & trade-offs
 
@@ -154,6 +182,7 @@ I would not spend this take-home's three-hour budget implementing optional multi
 
 - `triage/`: pipeline classifier, safety policy and CSV predictor.
 - `kbqa/`: metadata loader, family retriever, temporal resolver and batch answerer.
-- `eval/`: grouped classifier evaluation, retrieval metrics, document labels and paraphrase set.
-- `tests/`: temporal, abstention and correctness checks.
+- `mediaqa/`: Part C — local OCR + the Part A classifier, screenshot routing.
+- `eval/`: grouped classifier evaluation, retrieval metrics, answer-quality scoring, document labels and paraphrase set, model comparison, LLM experiment.
+- `tests/`: temporal, abstention, correctness, and OCR-routing checks.
 - `baseline/`: original handover classifier and updated evaluation decision.
