@@ -39,6 +39,15 @@ The classifier CSV contract is `text,prediction`. The answer CSV contract is `qi
 python -m mediaqa.cli --input-dir media/screenshots --output media_predictions.csv
 ```
 
+**Optional — local demo UI (presentation only, not a deliverable):** a small Flask page in front of the same repo code, for showing the system live instead of reading CSV output. Needs `pip install -r requirements-demo.txt`.
+
+```text
+python -m demo.server
+# open http://127.0.0.1:5050
+```
+
+Three panels: type a message and see it routed with per-class probabilities and whether the keyword safety net or the model caught it; click one of the three provided screenshots (or upload your own PNG/JPG) and see it OCR'd and routed; ask the KB a question with an `as_of` date and see the answer, `doc_ids`, or the abstention reason. Runs entirely on localhost — nothing uploaded leaves the machine. The screenshot panel disables itself cleanly if Part C's dependencies aren't installed, instead of erroring.
+
 ## Part A — classifier evaluation and decision
 
 ### Why 98.75% is inflated
@@ -186,3 +195,4 @@ Any future multimodal path should also preserve provenance, allow correction, an
 - `eval/`: grouped classifier evaluation, retrieval metrics, answer-quality scoring, document labels and paraphrase set, model comparison, LLM experiment.
 - `tests/`: temporal, abstention, correctness, and OCR-routing checks.
 - `baseline/`: original handover classifier and updated evaluation decision.
+- `demo/`: local Flask UI for presentation, not a deliverable — drives the repo code directly.

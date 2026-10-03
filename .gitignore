@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 catboost_info/
 .env
+demo/_upload.*

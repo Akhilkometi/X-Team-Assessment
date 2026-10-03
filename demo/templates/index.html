@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support Triage &amp; KBQA — Live Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:hsl(210 22% 97%);
+  --surface:hsl(0 0% 100%);
+  --surface-2:hsl(210 20% 93%);
+  --ink:hsl(218 32% 14%);
+  --ink-muted:hsl(218 14% 42%);
+  --border:hsl(214 18% 85%);
+  --accent:hsl(22 78% 48%);
+  --accent-ink:hsl(22 78% 30%);
+  --good:hsl(152 48% 32%);
+  --good-bg:hsl(152 45% 93%);
+  --bad:hsl(355 65% 46%);
+  --bad-bg:hsl(355 60% 95%);
+  --warn:hsl(42 88% 38%);
+  --warn-bg:hsl(42 80% 92%);
+  --font-sans:'IBM Plex Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono','SF Mono',Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:hsl(220 22% 9%);
+    --surface:hsl(220 19% 13%);
+    --surface-2:hsl(220 17% 17%);
+    --ink:hsl(210 20% 94%);
+    --ink-muted:hsl(214 12% 66%);
+    --border:hsl(218 16% 25%);
+    --accent:hsl(28 88% 60%);
+    --accent-ink:hsl(28 88% 72%);
+    --good:hsl(152 42% 52%);
+    --good-bg:hsl(152 40% 16%);
+    --bad:hsl(355 72% 65%);
+    --bad-bg:hsl(355 45% 18%);
+    --warn:hsl(42 85% 58%);
+    --warn-bg:hsl(42 55% 16%);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);
+  font-size:15px;line-height:1.55;padding-inline:20px;padding-block:28px 56px;
+}
+.wrap{max-width:1040px;margin-inline:auto;display:flex;flex-direction:column;gap:22px;}
+h1{font-size:1.5rem;font-weight:700;letter-spacing:-0.01em;margin:0;text-wrap:balance;}
+h2{font-size:1rem;font-weight:600;margin:0;}
+p{margin:0;}
+.eyebrow{font-family:var(--font-mono);font-size:0.72rem;letter-spacing:0.09em;text-transform:uppercase;color:var(--accent-ink);font-weight:600;}
+.sub{color:var(--ink-muted);font-size:0.9rem;}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 22px 22px;display:flex;flex-direction:column;gap:14px;}
+.panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.panel-head .note{font-size:0.8rem;color:var(--ink-muted);}
+
+textarea,input[type=text],input[type=date]{
+  width:100%;font-family:var(--font-sans);font-size:0.92rem;color:var(--ink);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;resize:vertical;
+}
+textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+textarea{min-height:76px;}
+label{font-size:0.76rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.04em;font-weight:600;display:block;margin-bottom:5px;}
+
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+.row > div{flex:1;min-width:180px;}
+
+button{
+  font-family:var(--font-sans);font-size:0.86rem;font-weight:600;cursor:pointer;
+  border-radius:8px;padding:9px 16px;border:1px solid transparent;
+}
+button.primary{background:var(--accent);color:white;}
+button.primary:hover{filter:brightness(1.07);}
+button.ghost{background:var(--surface-2);color:var(--ink);border-color:var(--border);}
+button.ghost:hover{background:var(--border);}
+button:disabled{opacity:0.55;cursor:not-allowed;}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+.examples{display:flex;gap:8px;flex-wrap:wrap;}
+.examples button{font-size:0.78rem;padding:6px 11px;}
+
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+
+.result{border-top:1px solid var(--border);padding-top:14px;display:none;flex-direction:column;gap:12px;}
+.result.show{display:flex;}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:0.82rem;font-weight:600;padding:5px 12px;border-radius:99px;}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;}
+.chip.route-account-access{background:var(--warn-bg);color:var(--warn);}
+.chip.route-transaction-dispute{background:var(--surface-2);color:var(--ink);}
+.chip.route-fraud-report{background:var(--bad-bg);color:var(--bad);}
+.chip.route-general{background:var(--good-bg);color:var(--good);}
+.chip.abstain{background:var(--warn-bg);color:var(--warn);}
+.chip.answered{background:var(--good-bg);color:var(--good);}
+.chip.error{background:var(--bad-bg);color:var(--bad);}
+
+.bars{display:flex;flex-direction:column;gap:6px;}
+.bar-row{display:grid;grid-template-columns:140px 1fr 52px;align-items:center;gap:8px;font-size:0.8rem;}
+.bar-track{height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;}
+.bar-fill{height:100%;background:var(--ink-muted);border-radius:99px;transition:width 0.3s ease;}
+.bar-fill.hit{background:var(--accent);}
+.bar-val{font-family:var(--font-mono);text-align:right;color:var(--ink-muted);}
+
+.keyword-note{font-size:0.8rem;color:var(--ink-muted);}
+.keyword-note code{background:var(--surface-2);padding:1px 5px;border-radius:4px;}
+
+.ocr-box{font-family:var(--font-mono);font-size:0.78rem;background:var(--surface-2);border-radius:8px;padding:10px 12px;max-height:160px;overflow-y:auto;white-space:pre-wrap;color:var(--ink-muted);}
+
+.answer-box{font-size:0.9rem;background:var(--surface-2);border-radius:8px;padding:12px 14px;}
+.doc-ids{font-family:var(--font-mono);font-size:0.78rem;color:var(--ink-muted);}
+
+.thumb-row{display:flex;gap:10px;flex-wrap:wrap;}
+.thumb{border:1px solid var(--border);border-radius:8px;padding:6px;background:var(--surface-2);display:flex;flex-direction:column;gap:6px;align-items:center;cursor:pointer;width:96px;}
+.thumb:hover{border-color:var(--accent);}
+.thumb img{width:80px;height:auto;border-radius:4px;display:block;}
+.thumb span{font-size:0.68rem;color:var(--ink-muted);text-align:center;}
+
+.dropzone{border:1.5px dashed var(--border);border-radius:8px;padding:16px;text-align:center;font-size:0.84rem;color:var(--ink-muted);cursor:pointer;}
+.dropzone:hover{border-color:var(--accent);color:var(--ink);}
+.dropzone.drag{border-color:var(--accent);background:var(--surface-2);}
+input[type=file]{display:none;}
+
+.unavailable{font-size:0.86rem;color:var(--warn);background:var(--warn-bg);padding:10px 12px;border-radius:8px;}
+
+footer{font-size:0.76rem;color:var(--ink-muted);font-family:var(--font-mono);text-align:center;padding-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div>
+    <span class="eyebrow">Support Triage &amp; Knowledge Answering</span>
+    <h1>Live Demo</h1>
+    <p class="sub">Drives the actual repo code directly — same fitted classifier, same OCR pipeline, same KB resolver as the CLI entry points. For presentation only; the required deliverables are the CSV batch commands.</p>
+  </div>
+
+  <!-- MESSAGE ROUTING -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Route a support message</h2>
+      <span class="panel-head note">triage.classifier.predict_route</span>
+    </div>
+    <div>
+      <label for="msg-input">Message text</label>
+      <textarea id="msg-input" placeholder="Type or paste a customer message…"></textarea>
+    </div>
+    <div class="examples" id="msg-examples"></div>
+    <div class="actions">
+      <button class="primary" id="msg-submit">Route message</button>
+      <span class="sub mono" id="msg-status"></span>
+    </div>
+    <div class="result" id="msg-result"></div>
+  </div>
+
+  <!-- SCREENSHOT ROUTING -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Route a screenshot <span class="sub">(Part C)</span></h2>
+      <span class="panel-head note">mediaqa.ocr → triage.classifier.predict_route</span>
+    </div>
+    <div id="img-unavailable" class="unavailable" style="display:none;">Part C isn't installed in this environment — install requirements-mediaqa.txt and Tesseract to enable screenshot routing.</div>
+    <div id="img-controls">
+      <label>Try a provided sample</label>
+      <div class="thumb-row" id="img-samples"></div>
+      <div style="height:6px;"></div>
+      <label>Or upload your own</label>
+      <div class="dropzone" id="dropzone">Click to choose a PNG/JPG, or drag one here</div>
+      <input type="file" id="img-input" accept="image/png,image/jpeg">
+    </div>
+    <div class="actions">
+      <span class="sub mono" id="img-status"></span>
+    </div>
+    <div class="result" id="img-result"></div>
+  </div>
+
+  <!-- KB QUESTION -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Ask the knowledge base</h2>
+      <span class="panel-head note">kbqa.answer.KBAnswerer.answer(question, as_of)</span>
+    </div>
+    <div class="row">
+      <div style="flex:3;">
+        <label for="q-input">Question</label>
+        <input type="text" id="q-input" placeholder="e.g. What fee do I pay to withdraw crypto?">
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <label for="q-asof">As of date</label>
+        <input type="date" id="q-asof" value="2026-07-28">
+      </div>
+    </div>
+    <div class="examples" id="q-examples"></div>
+    <div class="actions">
+      <button class="primary" id="q-submit">Ask</button>
+      <span class="sub mono" id="q-status"></span>
+    </div>
+    <div class="result" id="q-result"></div>
+  </div>
+
+  <footer>starter/demo — localhost only, nothing here leaves this machine</footer>
+</div>
+
+<script>
+const ROUTE_LABEL = {
+  "account-access": "Account access",
+  "transaction-dispute": "Transaction dispute",
+  "fraud-report": "Fraud report",
+  "general": "General",
+};
+const exampleMessages = {{ example_messages | tojson }};
+const exampleQuestions = {{ example_questions | tojson }};
+const mediaqaAvailable = {{ mediaqa_available | tojson }};
+const sampleScreenshots = ["login-error.png", "phishing-sms.png", "txn-failed.png"];
+
+function escapeHtml(s){
+  return (s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function renderClassification(result, container){
+  if (result.error){
+    container.innerHTML = `<span class="chip error">Error</span><p class="sub">${escapeHtml(result.error)}</p>`;
+    container.classList.add("show");
+    return;
+  }
+  const route = result.prediction;
+  let html = `<span class="chip route-${route}">${ROUTE_LABEL[route] || route}</span>`;
+  if (result.ocr_text !== undefined){
+    html += `<div><label>OCR extracted text</label><div class="ocr-box">${escapeHtml(result.ocr_text)}</div></div>`;
+  }
+  if (result.keyword_matched){
+    html += `<p class="keyword-note">Caught by the keyword safety net: pattern <code>${escapeHtml(result.keyword_matched)}</code></p>`;
+  } else {
+    html += `<p class="keyword-note">Caught by the trained model's probability — no keyword pattern matched.</p>`;
+  }
+  if (result.probabilities){
+    html += '<div class="bars">';
+    for (const [cls, p] of Object.entries(result.probabilities)){
+      const pct = Math.round(p * 1000) / 10;
+      const hit = cls === "fraud-report" ? "hit" : "";
+      html += `<div class="bar-row"><span>${ROUTE_LABEL[cls] || cls}</span><div class="bar-track"><div class="bar-fill ${cls === route ? 'hit' : ''}" style="width:${pct}%"></div></div><span class="bar-val mono">${pct.toFixed(1)}%</span></div>`;
+    }
+    html += '</div>';
+    html += `<p class="sub mono">fraud threshold: ${result.fraud_threshold}</p>`;
+  }
+  container.innerHTML = html;
+  container.classList.add("show");
+}
+
+// --- message routing ---
+const msgInput = document.getElementById("msg-input");
+const msgExamples = document.getElementById("msg-examples");
+const msgResult = document.getElementById("msg-result");
+const msgStatus = document.getElementById("msg-status");
+
+exampleMessages.forEach(ex => {
+  const btn = document.createElement("button");
+  btn.className = "ghost";
+  btn.textContent = ROUTE_LABEL[ex.label] + " example";
+  btn.onclick = () => { msgInput.value = ex.text; };
+  msgExamples.appendChild(btn);
+});
+
+document.getElementById("msg-submit").onclick = async () => {
+  const text = msgInput.value.trim();
+  if (!text) { msgStatus.textContent = "enter a message first"; return; }
+  msgStatus.textContent = "routing…";
+  try {
+    const res = await fetch("/api/route-text", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({text})});
+    const data = await res.json();
+    msgStatus.textContent = res.ok ? "" : `HTTP ${res.status}`;
+    renderClassification(data, msgResult);
+  } catch (e) {
+    msgStatus.textContent = "request failed: " + e.message;
+  }
+};
+
+// --- screenshot routing ---
+const imgResult = document.getElementById("img-result");
+const imgStatus = document.getElementById("img-status");
+const imgSamples = document.getElementById("img-samples");
+const dropzone = document.getElementById("dropzone");
+const imgInput = document.getElementById("img-input");
+
+if (!mediaqaAvailable){
+  document.getElementById("img-unavailable").style.display = "block";
+  document.getElementById("img-controls").style.display = "none";
+} else {
+  sampleScreenshots.forEach(name => {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `<img src="/media/${name}" alt="${name}"><span>${name}</span>`;
+    div.onclick = async () => {
+      imgStatus.textContent = "running OCR…";
+      try {
+        const res = await fetch(`/api/sample-image/${name}`);
+        const data = await res.json();
+        imgStatus.textContent = res.ok ? "" : `HTTP ${res.status}`;
+        renderClassification(data, imgResult);
+      } catch (e) {
+        imgStatus.textContent = "request failed: " + e.message;
+      }
+    };
+    imgSamples.appendChild(div);
+  });
+
+  async function uploadImage(file){
+    imgStatus.textContent = "running OCR…";
+    const formData = new FormData();
+    formData.append("image", file);
+    try {
+      const res = await fetch("/api/route-image", {method:"POST", body: formData});
+      const data = await res.json();
+      imgStatus.textContent = res.ok ? "" : `HTTP ${res.status}`;
+      renderClassification(data, imgResult);
+    } catch (e) {
+      imgStatus.textContent = "request failed: " + e.message;
+    }
+  }
+
+  dropzone.onclick = () => imgInput.click();
+  imgInput.onchange = () => { if (imgInput.files[0]) uploadImage(imgInput.files[0]); };
+  dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+  dropzone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropzone.classList.remove("drag");
+    if (e.dataTransfer.files[0]) uploadImage(e.dataTransfer.files[0]);
+  });
+}
+
+// --- KB question ---
+const qInput = document.getElementById("q-input");
+const qAsof = document.getElementById("q-asof");
+const qExamples = document.getElementById("q-examples");
+const qResult = document.getElementById("q-result");
+const qStatus = document.getElementById("q-status");
+
+exampleQuestions.forEach(ex => {
+  const btn = document.createElement("button");
+  btn.className = "ghost";
+  btn.textContent = ex.question.length > 40 ? ex.question.slice(0, 40) + "…" : ex.question;
+  btn.onclick = () => { qInput.value = ex.question; qAsof.value = ex.as_of; };
+  qExamples.appendChild(btn);
+});
+
+document.getElementById("q-submit").onclick = async () => {
+  const question = qInput.value.trim();
+  const asOf = qAsof.value;
+  if (!question){ qStatus.textContent = "enter a question first"; return; }
+  if (!asOf){ qStatus.textContent = "pick an as-of date"; return; }
+  qStatus.textContent = "resolving…";
+  try {
+    const res = await fetch("/api/answer", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({question, as_of: asOf})});
+    const data = await res.json();
+    qStatus.textContent = res.ok ? "" : `HTTP ${res.status}`;
+    if (data.error){
+      qResult.innerHTML = `<span class="chip error">Error</span><p class="sub">${escapeHtml(data.error)}</p>`;
+    } else if (data.abstained){
+      qResult.innerHTML = `<span class="chip abstain">Abstained</span><p class="sub">reason: <code class="mono">${escapeHtml(data.reason || "")}</code></p>`;
+    } else {
+      qResult.innerHTML = `<span class="chip answered">Answered</span>
+        <div class="answer-box">${escapeHtml(data.answer)}</div>
+        <p class="doc-ids">doc_ids: ${escapeHtml((data.doc_ids || []).join("; "))} &nbsp;·&nbsp; family: ${escapeHtml(data.family_id || "")}</p>`;
+    }
+    qResult.classList.add("show");
+  } catch (e) {
+    qStatus.textContent = "request failed: " + e.message;
+  }
+};
+</script>
+</body>
+</html>
