@@ -125,6 +125,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .thumb img{width:80px;height:auto;border-radius:4px;display:block;}
 .thumb span{font-size:0.68rem;color:var(--ink-muted);text-align:center;}
 
+.audio-row{display:flex;gap:10px;flex-wrap:wrap;}
+.audio-card{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface-2);display:flex;flex-direction:column;gap:8px;min-width:220px;flex:1;}
+.audio-card span{font-size:0.74rem;color:var(--ink-muted);}
+.audio-card audio{width:100%;height:32px;}
+
 .dropzone{border:1.5px dashed var(--border);border-radius:8px;padding:16px;text-align:center;font-size:0.84rem;color:var(--ink-muted);cursor:pointer;}
 .dropzone:hover{border-color:var(--accent);color:var(--ink);}
 .dropzone.drag{border-color:var(--accent);background:var(--surface-2);}
@@ -183,6 +188,28 @@ footer{font-size:0.76rem;color:var(--ink-muted);font-family:var(--font-mono);tex
     <div class="result" id="img-result"></div>
   </div>
 
+  <!-- VOICE ROUTING -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Route a voice note <span class="sub">(demo only — not the Part C submission)</span></h2>
+      <span class="panel-head note">mediaqa.asr (Whisper, local) → triage.classifier.predict_route</span>
+    </div>
+    <p class="panel-head note" style="width:100%;">Part C's chosen modality is screenshots — this panel exists only to show, live, why voice wasn't selected: added latency, and a real failure mode below.</p>
+    <div id="voice-unavailable" class="unavailable" style="display:none;">Whisper isn't installed in this environment — install requirements-voice-demo.txt and ffmpeg to enable voice routing.</div>
+    <div id="voice-controls">
+      <label>Try a provided sample</label>
+      <div class="audio-row" id="voice-samples"></div>
+      <div style="height:6px;"></div>
+      <label>Or upload your own</label>
+      <div class="dropzone" id="voice-dropzone">Click to choose an MP3/WAV/M4A, or drag one here</div>
+      <input type="file" id="voice-input" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a">
+    </div>
+    <div class="actions">
+      <span class="sub mono" id="voice-status"></span>
+    </div>
+    <div class="result" id="voice-result"></div>
+  </div>
+
   <!-- KB QUESTION -->
   <div class="panel">
     <div class="panel-head">
@@ -220,7 +247,9 @@ const ROUTE_LABEL = {
 const exampleMessages = {{ example_messages | tojson }};
 const exampleQuestions = {{ example_questions | tojson }};
 const mediaqaAvailable = {{ mediaqa_available | tojson }};
+const asrAvailable = {{ asr_available | tojson }};
 const sampleScreenshots = ["login-error.png", "phishing-sms.png", "txn-failed.png"];
+const sampleVoiceNotes = ["voice-01.mp3", "voice-02.mp3", "voice-03.mp3"];
 
 function escapeHtml(s){
   return (s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -236,6 +265,9 @@ function renderClassification(result, container){
   let html = `<span class="chip route-${route}">${ROUTE_LABEL[route] || route}</span>`;
   if (result.ocr_text !== undefined){
     html += `<div><label>OCR extracted text</label><div class="ocr-box">${escapeHtml(result.ocr_text)}</div></div>`;
+  }
+  if (result.transcript !== undefined){
+    html += `<div><label>Whisper transcript</label><div class="ocr-box">${escapeHtml(result.transcript)}</div></div>`;
   }
   if (result.keyword_matched){
     html += `<p class="keyword-note">Caught by the keyword safety net: pattern <code>${escapeHtml(result.keyword_matched)}</code></p>`;
@@ -335,6 +367,60 @@ if (!mediaqaAvailable){
     e.preventDefault();
     dropzone.classList.remove("drag");
     if (e.dataTransfer.files[0]) uploadImage(e.dataTransfer.files[0]);
+  });
+}
+
+// --- voice routing (demo only) ---
+const voiceResult = document.getElementById("voice-result");
+const voiceStatus = document.getElementById("voice-status");
+const voiceSamples = document.getElementById("voice-samples");
+const voiceDropzone = document.getElementById("voice-dropzone");
+const voiceInput = document.getElementById("voice-input");
+
+if (!asrAvailable){
+  document.getElementById("voice-unavailable").style.display = "block";
+  document.getElementById("voice-controls").style.display = "none";
+} else {
+  sampleVoiceNotes.forEach(name => {
+    const div = document.createElement("div");
+    div.className = "audio-card";
+    div.innerHTML = `<span>${name}</span><audio controls preload="none" src="/voice/${name}"></audio><button class="ghost">Transcribe &amp; route</button>`;
+    div.querySelector("button").onclick = async () => {
+      voiceStatus.textContent = "transcribing (first run loads the model, ~20-30s)…";
+      try {
+        const res = await fetch(`/api/sample-voice/${name}`);
+        const data = await res.json();
+        voiceStatus.textContent = res.ok ? "" : `HTTP ${res.status}`;
+        renderClassification(data, voiceResult);
+      } catch (e) {
+        voiceStatus.textContent = "request failed: " + e.message;
+      }
+    };
+    voiceSamples.appendChild(div);
+  });
+
+  async function uploadVoice(file){
+    voiceStatus.textContent = "transcribing (first run loads the model, ~20-30s)…";
+    const formData = new FormData();
+    formData.append("audio", file);
+    try {
+      const res = await fetch("/api/route-voice", {method:"POST", body: formData});
+      const data = await res.json();
+      voiceStatus.textContent = res.ok ? "" : `HTTP ${res.status}`;
+      renderClassification(data, voiceResult);
+    } catch (e) {
+      voiceStatus.textContent = "request failed: " + e.message;
+    }
+  }
+
+  voiceDropzone.onclick = () => voiceInput.click();
+  voiceInput.onchange = () => { if (voiceInput.files[0]) uploadVoice(voiceInput.files[0]); };
+  voiceDropzone.addEventListener("dragover", e => { e.preventDefault(); voiceDropzone.classList.add("drag"); });
+  voiceDropzone.addEventListener("dragleave", () => voiceDropzone.classList.remove("drag"));
+  voiceDropzone.addEventListener("drop", e => {
+    e.preventDefault();
+    voiceDropzone.classList.remove("drag");
+    if (e.dataTransfer.files[0]) uploadVoice(e.dataTransfer.files[0]);
   });
 }
 

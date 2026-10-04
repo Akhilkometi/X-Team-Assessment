@@ -32,8 +32,16 @@ try:
 except ImportError:
     MEDIAQA_AVAILABLE = False
 
+try:
+    import whisper as _whisper_probe  # noqa: F401 -- import-only check, the real model loads lazily
+
+    ASR_AVAILABLE = True
+except ImportError:
+    ASR_AVAILABLE = False
+
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
+ALLOWED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a"}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
@@ -45,6 +53,7 @@ _fraud_threshold = estimate_fraud_threshold(_train_texts, _train_labels)
 _answerer = KBAnswerer(load_documents())
 
 SAMPLE_SCREENSHOTS = ["login-error.png", "phishing-sms.png", "txn-failed.png"]
+SAMPLE_VOICE_NOTES = ["voice-01.mp3", "voice-02.mp3", "voice-03.mp3"]
 
 EXAMPLE_MESSAGES = [
     {"label": "general", "text": "How does staking work and what rewards can I expect on Polygon? Please advise."},
@@ -85,6 +94,7 @@ def index():
         example_messages=EXAMPLE_MESSAGES,
         example_questions=EXAMPLE_QUESTIONS,
         mediaqa_available=MEDIAQA_AVAILABLE,
+        asr_available=ASR_AVAILABLE,
     )
 
 
@@ -147,6 +157,57 @@ def route_sample_image(name: str):
     result = _classify(text)
     result["ocr_text"] = text
     return jsonify(result)
+
+
+@app.get("/voice/<name>")
+def sample_voice_file(name: str):
+    if name not in SAMPLE_VOICE_NOTES:
+        return jsonify({"error": f"unknown sample {name!r}"}), 404
+    return send_from_directory(ROOT / "media" / "voice", name)
+
+
+def _transcribe_and_classify(audio_path: Path) -> dict:
+    from mediaqa.asr import transcribe
+
+    text = transcribe(audio_path).strip()
+    if not text:
+        return {"transcript": "", "prediction": None, "error": "ASR found no speech in this clip"}
+    result = _classify(text)
+    result["transcript"] = text
+    return result
+
+
+@app.get("/api/sample-voice/<name>")
+def route_sample_voice(name: str):
+    if not ASR_AVAILABLE:
+        return jsonify({"error": "Whisper isn't installed -- pip install -r requirements-voice-demo.txt and ensure ffmpeg is on PATH"}), 503
+    if name not in SAMPLE_VOICE_NOTES:
+        return jsonify({"error": f"unknown sample {name!r}"}), 404
+    try:
+        return jsonify(_transcribe_and_classify(ROOT / "media" / "voice" / name))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"ASR failed: {type(exc).__name__}: {exc}"}), 422
+
+
+@app.post("/api/route-voice")
+def route_voice():
+    if not ASR_AVAILABLE:
+        return jsonify({"error": "Whisper isn't installed -- pip install -r requirements-voice-demo.txt and ensure ffmpeg is on PATH"}), 503
+    uploaded = request.files.get("audio")
+    if uploaded is None or uploaded.filename == "":
+        return jsonify({"error": "no audio uploaded"}), 400
+    suffix = Path(uploaded.filename).suffix.lower()
+    if suffix not in ALLOWED_AUDIO_SUFFIXES:
+        return jsonify({"error": f"unsupported file type {suffix!r}; use mp3/wav/m4a"}), 400
+
+    tmp_path = ROOT / "demo" / f"_upload{suffix}"
+    uploaded.save(tmp_path)
+    try:
+        return jsonify(_transcribe_and_classify(tmp_path))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"ASR failed: {type(exc).__name__}: {exc}"}), 422
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 @app.post("/api/answer")
