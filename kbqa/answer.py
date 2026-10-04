@@ -7,7 +7,7 @@ from datetime import date
 
 from kbqa.loader import Document
 from kbqa.resolve import Resolution, resolve_family
-from kbqa.retrieve import FamilyBM25, Retrieval, expanded_query_terms, tokenize
+from kbqa.retrieve import FamilyEmbeddingIndex, Retrieval, expanded_query_terms, tokenize
 
 
 @dataclass(frozen=True)
@@ -52,11 +52,11 @@ def _answer_resolution(resolution: Resolution, question: str, as_of: date) -> An
 
 
 class KBAnswerer:
-    def __init__(self, documents: list[Document], *, min_score: float = 1.5, min_margin: float = 0.15):
+    def __init__(self, documents: list[Document], *, min_score: float = 0.30, min_margin: float = 0.02):
         if not documents:
             raise ValueError("At least one KB document is required")
         self.documents = documents
-        self.index = FamilyBM25(documents)
+        self.index = FamilyEmbeddingIndex(documents)
         self.min_score = min_score
         self.min_margin = min_margin
 

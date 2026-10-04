@@ -15,8 +15,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Answer customer questions from the dated support KB")
     parser.add_argument("--input", required=True, help="CSV containing qid, question, as_of")
     parser.add_argument("--output", required=True, help="Destination CSV")
-    parser.add_argument("--min-score", type=float, default=1.5)
-    parser.add_argument("--min-margin", type=float, default=0.15)
+    parser.add_argument("--min-score", type=float, default=0.30)
+    parser.add_argument("--min-margin", type=float, default=0.02)
     args = parser.parse_args()
     with Path(args.input).open(newline="", encoding="utf-8") as source:
         reader = csv.DictReader(source)
