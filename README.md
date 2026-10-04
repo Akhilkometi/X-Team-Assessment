@@ -197,6 +197,6 @@ python -m voiceqa.cli --input-dir media/voice --output voice_predictions.csv
 - `mediaqa/`: Part C — local OCR + the Part A classifier, screenshot routing.
 - `voiceqa/`: Part C — local Whisper ASR + the Part A classifier, voice note routing.
 - `eval/`: grouped classifier evaluation, retrieval metrics, answer-quality scoring, document labels and paraphrase set, model comparison, LLM experiment.
-- `tests/`: temporal, abstention, correctness, and OCR-routing checks (27 tests, `python -m pytest -q`).
+- `tests/`: temporal, abstention, correctness, and media-routing checks (33 tests, `python -m pytest -q`).
 - `baseline/`: original handover classifier and updated evaluation decision.
-- `demo/`: local Flask UI for presentation, not a deliverable — drives the repo code directly (includes a demo-only voice panel; Part C's submitted choice remains screenshots).
+- `demo/`: local Flask UI for presentation, not a deliverable — drives the repo code directly, including live routing for both Part C modalities.
